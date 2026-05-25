@@ -1,0 +1,77 @@
+name: Dev Deploy (Dry Run)
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - 'apps/**/app.version.json'
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+
+    outputs:
+      apps: ${{ steps.apps.outputs.apps }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: apps
+        shell: bash
+        run: |
+          echo "🔍 Detecting changed app.version.json files..."
+
+          CHANGED_FILES=$(git diff --name-only HEAD^ HEAD || true)
+
+          echo "📄 Changed files:"
+          echo "$CHANGED_FILES"
+
+          APPS=$(echo "$CHANGED_FILES" \
+            | grep 'apps/.*/app.version.json' \
+            | cut -d/ -f2 \
+            | sort -u \
+            | jq -R -s -c 'split("\n")[:-1]')
+
+          echo "📦 Detected apps JSON:"
+          echo "$APPS"
+
+          echo "apps=$APPS" >> $GITHUB_OUTPUT
+
+  plan:
+    needs: detect
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Show plan
+        shell: bash
+        run: |
+          echo "=============================="
+          echo "🚀 DRY RUN DEPLOY PLAN"
+          echo "=============================="
+
+          APPS='${{ needs.detect.outputs.apps }}'
+
+          echo "📦 Apps from detect:"
+          echo "$APPS"
+
+          echo ""
+          echo "📌 Generated commands:"
+
+          echo "$APPS" | jq -r '.[]' | while read app; do
+            IMAGE_NAME="${app}:dev"
+            CONTEXT="./apps/${app}"
+
+            echo "----------------------------------"
+            echo "APP: $app"
+            echo "IMAGE: $IMAGE_NAME"
+            echo "CONTEXT: $CONTEXT"
+            echo ""
+            echo "👉 docker build -t $IMAGE_NAME $CONTEXT"
+            echo "----------------------------------"
+          done
+
+          echo ""
+          echo "✅ Done"

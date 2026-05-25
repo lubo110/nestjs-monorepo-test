@@ -1,0 +1,121 @@
+name: CI/CD Workflow for Prod
+
+on:
+  push:
+    tags:
+      - '*'
+
+env:
+  ACCOUNT_KEY: ${{ secrets.GCP_PROD_SA_CREDENTIALS }}
+  PROJECT_ID: ${{ secrets.GCP_PROD_PROJECT_ID }}
+  REGION: asia
+  GAR_LOCATION: docker.pkg.dev
+  AR_REGISTRY: incare-docker
+  IMAGE_NAME: apiv2
+
+jobs:
+  build-and-push:
+    name: Setup, Build, and Push
+    runs-on: ubuntu-latest
+
+    # 從此 job 輸出 tag 給 notify job 使用
+    outputs:
+      tag: ${{ steps.get_tag.outputs.tag }}
+
+    steps:
+      # Step 1: 檢出程式碼
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: 获取 tag 版本号
+      - name: Get tag
+        id: get_tag
+        run: echo "tag=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      # Step 3: Google Cloud 認證
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ env.ACCOUNT_KEY }}
+
+      # Step 4: 設定 gcloud CLI
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      # Step 5: 配置 Docker 認證
+      - name: Authenticate Docker
+        run: gcloud auth configure-docker ${{ env.REGION }}-${{ env.GAR_LOCATION }}
+
+      # Step 6: 建立並推送 Docker 映像檔
+      - name: Build Docker Image
+        run: |
+          set -e
+          IMAGE_TAG="${{ steps.get_tag.outputs.tag }}"
+          IMAGE_PATH="${{ env.REGION }}-${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.AR_REGISTRY }}/${{ env.IMAGE_NAME }}:$IMAGE_TAG"
+          echo "Building Docker image: $IMAGE_PATH"
+
+          docker build -t "$IMAGE_PATH" .
+          docker push "$IMAGE_PATH"
+
+  notify:
+    name: Send Notifications
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 7: 檢出程式碼，否則無法獲取版本號
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 8: Send Email Notification via SendGrid
+      - name: Send Email Notification via SendGrid
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          SENDGRID_TO_EMAIL: ${{ secrets.SENDGRID_TO_EMAIL }}
+          SENDGRID_FROM_EMAIL: ${{ secrets.SENDGRID_FROM_EMAIL }}
+        run: |
+          set -e
+          IMAGE_TAG="${{ needs.build-and-push.outputs.tag }}"
+          IMAGE_PATH="${{ env.REGION }}-${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.AR_REGISTRY }}/${{ env.IMAGE_NAME }}:$IMAGE_TAG"
+
+          echo "Sending email notification for: $IMAGE_PATH"
+
+          # 使用 jq 正確構造 JSON
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          COMMIT_MESSAGE=$(git log -1 --pretty=%s)
+          COMMIT_AUTHOR=$(git log -1 --pretty=%an)
+          BRANCH_NAME="${GITHUB_REF_NAME}"
+          WORKFLOW_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          EMAIL_CONTENT=$(cat <<EOF
+          ✅ Docker Image Pushed to GCP(PROD) Artifact Registry (PROD)
+
+          📦 Image: $IMAGE_PATH
+          🔀 Branch: $BRANCH_NAME
+          🔖 Commit: $COMMIT_SHA by $COMMIT_AUTHOR
+          📝 Message: $COMMIT_MESSAGE
+          🔗 Workflow: $WORKFLOW_URL
+
+          This image is now available in the Artifact Registry.
+          EOF
+          )
+
+          EMAIL_JSON=$(jq -n \
+            --arg to "$SENDGRID_TO_EMAIL" \
+            --arg from "$SENDGRID_FROM_EMAIL" \
+            --arg subject "🚀 Docker Image Pushed to GCP(PROD) Artifact Registry (PROD)" \
+            --arg content "$EMAIL_CONTENT" \
+            '{
+              personalizations: [{ to: [{ email: $to }], subject: $subject }],
+              from: { email: $from },
+              content: [{ type: "text/plain", value: $content }]
+            }')
+
+          # 發送 SendGrid API 請求
+          curl --request POST \
+            --url https://api.sendgrid.com/v3/mail/send \
+            --header "Authorization: Bearer $SENDGRID_API_KEY" \
+            --header "Content-Type: application/json" \
+            --data "$EMAIL_JSON"
