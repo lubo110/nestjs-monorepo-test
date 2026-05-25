@@ -67,7 +67,7 @@ jobs:
           echo "$RESULT"
           echo "=============================="
 
-          echo "apps=$RESULT" >> $GITHUB_OUTPUT
+          echo "apps=$(echo "$RESULT" | jq -c .)" >> $GITHUB_OUTPUT
 
   plan:
     needs: detect
