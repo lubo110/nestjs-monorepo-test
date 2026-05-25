@@ -12,40 +12,69 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      apps: ${{ steps.apps.outputs.apps }}
+      apps: ${{ steps.set-output.outputs.apps }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
-      - id: apps
+      - name: Detect changed apps + read version
+        id: set-output
         shell: bash
         run: |
-          echo "🔍 Detecting changed app.version.json files..."
+          echo "=============================="
+          echo "🔍 Detect changed apps"
+          echo "=============================="
 
-          CHANGED_FILES=$(git diff --name-only HEAD^ HEAD || true)
+          FILES=$(git diff --name-only HEAD^ HEAD || true)
 
           echo "📄 Changed files:"
-          echo "$CHANGED_FILES"
+          echo "$FILES"
 
-          APPS=$(echo "$CHANGED_FILES" \
+          APPS=$(echo "$FILES" \
             | grep 'apps/.*/app.version.json' \
             | cut -d/ -f2 \
-            | sort -u \
-            | jq -R -s -c 'split("\n")[:-1]')
+            | sort -u)
 
-          echo "📦 Detected apps JSON:"
+          echo "📦 Detected apps:"
           echo "$APPS"
 
-          echo "apps=$APPS" >> $GITHUB_OUTPUT
+          RESULT="[]"
+
+          for app in $APPS; do
+            VERSION_FILE="apps/$app/app.version.json"
+
+            if [ ! -f "$VERSION_FILE" ]; then
+              echo "⚠️ Missing $VERSION_FILE, skip"
+              continue
+            fi
+
+            VERSION=$(cat "$VERSION_FILE" | jq -r '.version')
+
+            echo "👉 App: $app"
+            echo "   Version: $VERSION"
+
+            RESULT=$(echo "$RESULT" | jq \
+              --arg app "$app" \
+              --arg version "$VERSION" \
+              '. + [{"app": $app, "version": $version}]')
+          done
+
+          echo "=============================="
+          echo "📦 Final JSON:"
+          echo "$RESULT"
+          echo "=============================="
+
+          echo "apps=$RESULT" >> $GITHUB_OUTPUT
 
   plan:
     needs: detect
     runs-on: ubuntu-latest
 
     steps:
-      - name: Show plan
+      - name: Dry Run Deploy Plan
         shell: bash
         run: |
           echo "=============================="
@@ -54,24 +83,28 @@ jobs:
 
           APPS='${{ needs.detect.outputs.apps }}'
 
-          echo "📦 Apps from detect:"
+          echo "📦 Input:"
           echo "$APPS"
 
-          echo ""
-          echo "📌 Generated commands:"
+          echo "$APPS" | jq -c '.[]' | while read item; do
+            APP=$(echo "$item" | jq -r '.app')
+            VERSION=$(echo "$item" | jq -r '.version')
 
-          echo "$APPS" | jq -r '.[]' | while read app; do
-            IMAGE_NAME="${app}:dev"
-            CONTEXT="./apps/${app}"
+            IMAGE="${APP}:${VERSION}"
+            CONTEXT="./apps/${APP}"
+            DOCKERFILE="./apps/${APP}/Dockerfile"
 
             echo "----------------------------------"
-            echo "APP: $app"
-            echo "IMAGE: $IMAGE_NAME"
-            echo "CONTEXT: $CONTEXT"
+            echo "APP       : $APP"
+            echo "VERSION   : $VERSION"
+            echo "IMAGE     : $IMAGE"
+            echo "CONTEXT   : $CONTEXT"
+            echo "DOCKERFILE: $DOCKERFILE"
             echo ""
-            echo "👉 docker build -t $IMAGE_NAME $CONTEXT"
+            echo "👉 docker build -t $IMAGE -f $DOCKERFILE $CONTEXT"
             echo "----------------------------------"
           done
 
-          echo ""
-          echo "✅ Done"
+          echo "=============================="
+          echo "✅ DONE"
+          echo "=============================="
