@@ -1,0 +1,16 @@
+**/.git
+**/.DS_Store
+**/node_modules
+logs
+Dockerfile*
+docker-compose*
+.dockerignore
+.git
+.gitignore
+.vscode
+node_modules
+*.md
+dist
+env
+.github/*
+run.sh

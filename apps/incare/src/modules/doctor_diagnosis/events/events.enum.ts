@@ -1,0 +1,4 @@
+export enum DashboardEventType {
+  PENDING_CHANGED = 'PENDING_CHANGED',
+  MY_CASE_CHANGED = 'MY_CASE_CHANGED',
+}

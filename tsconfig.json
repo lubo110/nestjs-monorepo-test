@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "es6",
+    "noLib": false,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "baseUrl": ".",
+    "module": "commonjs",
+    "paths": {
+      "@app/my-library": [
+        "libs/my-library/src"
+      ],
+      "@app/my-library/*": [
+        "libs/my-library/src/*"
+      ],
+      "@incare/*": [
+        "apps/incare/src/*"
+      ]
+    },
+    "allowJs": true,
+    "noImplicitAny": false,
+    "declaration": false,
+    "outDir": "./dist",
+    "removeComments": true,
+    "sourceMap": true
+  }
+}

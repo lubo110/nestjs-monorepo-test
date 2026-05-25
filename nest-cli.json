@@ -1,0 +1,38 @@
+{
+  "monorepo": true,
+  "root": "apps/incare",
+  "sourceRoot": "apps/incare/src",
+  "compilerOptions": {
+    "webpack": true,
+    "tsConfigPath": "apps/incare/tsconfig.app.json"
+  },
+  "projects": {
+    "incare": {
+      "type": "application",
+      "root": "apps/incare",
+      "entryFile": "main",
+      "sourceRoot": "apps/incare/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/incare/tsconfig.app.json"
+      }
+    },
+    "incare-open": {
+      "type": "application",
+      "root": "apps/incare-open",
+      "entryFile": "main",
+      "sourceRoot": "apps/incare-open/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/incare-open/tsconfig.app.json"
+      }
+    },
+    "my-library": {
+      "type": "library",
+      "root": "libs/my-library",
+      "entryFile": "index",
+      "sourceRoot": "libs/my-library/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/my-library/tsconfig.lib.json"
+      }
+    }
+  }
+}
